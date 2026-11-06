@@ -1,0 +1,18 @@
+{
+  "carga_id": "buk-demo-001",
+  "anio": 2026,
+  "cambios": [
+    {
+      "asignacion_id": "ASG-001",
+      "vigente_desde": "2026-01-01",
+      "operacion": "alta_o_cambio",
+      "contrato": {
+        "profesional_id": "P-001",
+        "instituto": "Santiago",
+        "area": "Rehabilitación",
+        "cargo": "Kinesiología",
+        "horas_semanales": 22
+      }
+    }
+  ]
+}

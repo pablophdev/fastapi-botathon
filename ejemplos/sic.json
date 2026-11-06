@@ -1,0 +1,7 @@
+{
+  "carga_id": "sic-demo-001",
+  "anio": 2026,
+  "registros": [
+    {"profesional_id": "P-001", "instituto": "Santiago", "mes": 7, "atenciones": 140}
+  ]
+}

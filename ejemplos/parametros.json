@@ -1,0 +1,16 @@
+{
+  "meta_pct": 90,
+  "cargos": [
+    {
+      "cargo": "Kinesiología",
+      "porcentaje_directa": 60,
+      "porcentaje_indirecta": 30,
+      "porcentaje_nas": 10,
+      "minutos_directa": 30,
+      "minutos_indirecta": 30
+    }
+  ],
+  "dias_no_laborales": [
+    {"fecha": "2026-07-16", "instituto": null}
+  ]
+}
