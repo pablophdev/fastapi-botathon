@@ -84,6 +84,13 @@ def test_ciclo_json_transacciones_y_sic(cliente):
     assert c.post("/cargas/buk", json=baja).status_code == 200
     assert c.get("/planificacion?anio=2026&mes=3").json()["resumen"]["horas_contratadas"] == 0
     assert c.post("/cargas/buk", json=lote("retroactivo", "2026-02-15")).status_code == 409
+    con_nombre = lote("nombre", "2026-03-02", 40)
+    con_nombre["cambios"][0]["contrato"]["nombre_profesional"] = "María Pérez"
+    assert c.post("/cargas/buk", json=con_nombre).status_code == 200
+    assert c.get("/profesionales?anio=2026&nombre=maria").json()[0]["profesional_id"] == "P"
+    por_nombre = c.get("/planificacion?anio=2026&mes=1&nombre_profesional=perez").json()
+    assert por_nombre["detalle"][0]["nombre_profesional"] == "María Pérez"
+    assert por_nombre["sic"][0]["atenciones"] == 80
 
 
 def test_reenvio_lote_anterior_a_migracion(cliente):
@@ -91,7 +98,7 @@ def test_reenvio_lote_anterior_a_migracion(cliente):
     carga = lote()
     datos = CargaBUK.model_validate(carga).model_dump(mode="json")
     for cambio in datos["cambios"]:
-        for campo in ("region", "zona", "vacaciones", "asignaciones_especiales", "reduccion_mayo_pendiente"):
+        for campo in ("region", "zona", "vacaciones", "asignaciones_especiales", "reduccion_mayo_pendiente", "nombre_profesional"):
             cambio["contrato"].pop(campo)
     huella = sha256(json.dumps(datos, ensure_ascii=False, separators=(",", ":")).encode()).hexdigest()
     db.execute("INSERT INTO cargas(fuente,id,huella) VALUES ('BUK',%s,%s)", (carga["carga_id"], huella))
@@ -138,12 +145,24 @@ def test_reenvio_buk_json_con_almacen_simulado(monkeypatch):
         assert len(aplicados) == 1
         assert c.post("/cargas/buk", json=lote(horas=40)).status_code == 409
         antiguo = CargaBUK.model_validate(lote("legado")).model_dump(mode="json")
-        for campo in ("region", "zona", "vacaciones", "asignaciones_especiales", "reduccion_mayo_pendiente"):
+        for campo in ("region", "zona", "vacaciones", "asignaciones_especiales", "reduccion_mayo_pendiente", "nombre_profesional"):
             antiguo["cambios"][0]["contrato"].pop(campo)
         huella = sha256(json.dumps(antiguo, ensure_ascii=False, separators=(",", ":")).encode()).hexdigest()
         almacen[("BUK", "legado")] = {"huella": huella}
         assert c.post("/cargas/buk", json=lote("legado")).json()["estado"] == "ya_procesada"
         assert c.post("/cargas/buk", json=lote("legado", horas=40)).status_code == 409
+        anterior = CargaBUK.model_validate(lote("motor-anterior")).model_dump(mode="json")
+        anterior["cambios"][0]["contrato"].pop("nombre_profesional")
+        huella = sha256(json.dumps(anterior, sort_keys=True, ensure_ascii=False, separators=(",", ":")).encode()).hexdigest()
+        almacen[("BUK", "motor-anterior")] = {"huella": huella}
+        assert c.post("/cargas/buk", json=lote("motor-anterior")).json()["estado"] == "ya_procesada"
+        con_nombre = lote("motor-anterior")
+        con_nombre["cambios"][0]["contrato"]["nombre_profesional"] = "María Pérez"
+        assert c.post("/cargas/buk", json=con_nombre).status_code == 409
+        con_nombre["carga_id"] = "nuevo-con-nombre"
+        assert c.post("/cargas/buk", json=con_nombre).json()["estado"] == "procesada"
+        assert aplicados[-1].contrato.nombre_profesional == "María Pérez"
+        assert c.post("/cargas/buk", json=con_nombre).json()["estado"] == "ya_procesada"
 
 
 def test_planificacion_json_y_filtros_con_lectura_simulada(monkeypatch):

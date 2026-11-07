@@ -1,0 +1,19 @@
+{
+  "carga_id": "buk-nombre-demo-001",
+  "anio": 2026,
+  "cambios": [
+    {
+      "asignacion_id": "ASG-NOMBRE-001",
+      "vigente_desde": "2026-01-01",
+      "operacion": "alta_o_cambio",
+      "contrato": {
+        "profesional_id": "P-NOMBRE-001",
+        "nombre_profesional": "María Pérez González",
+        "instituto": "Santiago",
+        "area": "Rehabilitación",
+        "cargo": "Kinesiología",
+        "horas_semanales": 40
+      }
+    }
+  ]
+}

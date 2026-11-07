@@ -2,17 +2,18 @@ from datetime import date, timedelta
 from hashlib import sha256
 import json
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 from psycopg import OperationalError
 from psycopg.errors import InsufficientPrivilege, UndefinedTable
 from psycopg.types.json import Jsonb
 
 from .calculo import planificar, promedios_anuales, resumir, tramo_jornada, validar_vigencias
 from .db import conexion, verificar_base
-from .modelos import Anio, CargaBUK, CargaSIC, Clave, Mes, Parametros
+from .modelos import Anio, CargaBUK, CargaSIC, Clave, Mes, Parametros, Profesional
+from .profesionales import catalogo_profesionales, coincide_nombre, normalizar_nombre
 
 
-app = FastAPI(title="Cada hora cuenta", version="0.3.0")
+app = FastAPI(title="Cada hora cuenta", version="0.4.0")
 
 
 def cargar_parametros(db, anio):
@@ -29,17 +30,27 @@ def registrar_carga(db, fuente, carga):
         "SELECT huella FROM cargas WHERE fuente = %s AND id = %s", (fuente, carga.carga_id)
     ).fetchone()
     if previa is not None:
-        # Reconoce reenvíos de lotes procesados antes de ampliar Contrato.
+        huellas = {huella}
+        # Compatibilidad con la versión anterior, que no guardaba nombres.
         legado = carga.model_dump(mode="json")
         compatible = True
+        for cambio in legado.get("cambios", []):
+            contrato = cambio.get("contrato")
+            if contrato:
+                valor = contrato.pop("nombre_profesional")
+                compatible = compatible and valor is None
+        if compatible:
+            huellas.add(sha256(json.dumps(legado, sort_keys=True, ensure_ascii=False, separators=(",", ":")).encode()).hexdigest())
+        # Reconoce también lotes anteriores a la ampliación del motor.
         for cambio in legado.get("cambios", []):
             contrato = cambio.get("contrato")
             if contrato:
                 for campo in ("region", "zona", "vacaciones", "asignaciones_especiales", "reduccion_mayo_pendiente"):
                     valor = contrato.pop(campo)
                     compatible = compatible and not valor
-        huella_legada = sha256(json.dumps(legado, ensure_ascii=False, separators=(",", ":")).encode()).hexdigest()
-        if previa["huella"] != huella and not (compatible and previa["huella"] == huella_legada):
+        if compatible:
+            huellas.add(sha256(json.dumps(legado, ensure_ascii=False, separators=(",", ":")).encode()).hexdigest())
+        if previa["huella"] not in huellas:
             raise HTTPException(409, "La carga_id ya existe con otros datos.")
         return False
     db.execute("INSERT INTO cargas (fuente, id, huella) VALUES (%s, %s, %s)", (fuente, carga.carga_id, huella))
@@ -179,10 +190,26 @@ def cargar_sic(carga: CargaSIC):
     return resultado_carga(carga.carga_id, nueva, len(carga.registros))
 
 
+@app.get("/profesionales", response_model=list[Profesional])
+def buscar_profesionales(
+    anio: Anio, nombre: Clave | None = None, instituto: Clave | None = None,
+    limite: int = Query(50, ge=1, le=100), desplazamiento: int = Query(0, ge=0),
+):
+    with conexion() as db:
+        vigencias = db.execute(
+            "SELECT desde, datos FROM vigencias WHERE anio = %s", (anio,),
+        ).fetchall()
+    coincidencias = [p for p in catalogo_profesionales(vigencias).values()
+                    if coincide_nombre(p, nombre) and (instituto is None or instituto in p["institutos"])]
+    coincidencias.sort(key=lambda p: (normalizar_nombre(p["nombre_profesional"]), p["profesional_id"]))
+    return coincidencias[desplazamiento:desplazamiento + limite]
+
+
 @app.get("/planificacion")
 def consultar_planificacion(
     anio: Anio, mes: Mes | None = None, instituto: Clave | None = None,
     area: Clave | None = None, cargo: Clave | None = None, profesional_id: Clave | None = None,
+    nombre_profesional: Clave | None = None,
 ):
     with conexion() as db:
         parametros = cargar_parametros(db, anio)
@@ -196,13 +223,17 @@ def consultar_planificacion(
         ).fetchall()
 
     filtros = (profesional_id, instituto, mes, area, cargo)
+    profesionales = catalogo_profesionales(vigencias)
+    ids_por_nombre = {clave for clave, p in profesionales.items() if coincide_nombre(p, nombre_profesional)}
     promedios = promedios_anuales(vigencias, parametros)
     valores_filtrados = {
         clave: valores for clave, valores in planificar(vigencias, parametros).items()
         if all(filtro is None or filtro == dato for filtro, dato in zip(filtros, clave))
+        and (nombre_profesional is None or clave[0] in ids_por_nombre)
     }
     detalle = [
-        {"profesional_id": persona, "instituto": centro, "mes": periodo, "area": unidad,
+        {"profesional_id": persona, "nombre_profesional": profesionales[persona]["nombre_profesional"],
+         "instituto": centro, "mes": periodo, "area": unidad,
          "cargo": rol,
          "jornada_promedio_anual": round(float(promedios[(persona, centro)]), 4),
          "tramo_jornada": tramo_jornada(promedios[(persona, centro)]),
@@ -214,7 +245,8 @@ def consultar_planificacion(
         sic = [
             dict(f) for f in realizadas
             if all(filtro is None or filtro == f[campo]
-                   for filtro, campo in zip(filtros[:3], ("profesional_id", "instituto", "mes")))
+                    for filtro, campo in zip(filtros[:3], ("profesional_id", "instituto", "mes")))
+            and (nombre_profesional is None or f["profesional_id"] in ids_por_nombre)
         ]
 
     return {

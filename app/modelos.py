@@ -16,6 +16,12 @@ class Entrada(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+class Profesional(Entrada):
+    profesional_id: Clave
+    nombre_profesional: Clave | None = None
+    institutos: list[Clave]
+
+
 class Periodo(Entrada):
     desde: date
     hasta: date
@@ -40,6 +46,7 @@ class Contrato(Entrada):
     vacaciones: list[Periodo] = Field(default_factory=list)
     asignaciones_especiales: list[Clave] = Field(default_factory=list)
     reduccion_mayo_pendiente: bool = False
+    nombre_profesional: Clave | None = None
 
     @model_validator(mode="after")
     def validar_horas(self):

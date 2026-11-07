@@ -40,6 +40,18 @@ Los cuatro ejemplos originales siguen siendo compatibles. No mezcles lotes retro
 
 ## Contrato de integración JSON
 
+### Búsqueda por nombre para el dashboard
+
+Las cargas BUK aceptan `contrato.nombre_profesional`, opcional para conservar compatibilidad. Ejemplo: `ejemplos/buk_con_nombre.json`, que puede cargarse después de los parámetros de ejemplo. El nombre se guarda en el JSONB existente: **no requiere otra migración SQL**.
+
+- `GET /profesionales?anio=2026&nombre=maria`: búsqueda parcial, sin distinguir mayúsculas, tildes ni espacios repetidos. Devuelve una lista de `{profesional_id, nombre_profesional, institutos}`. Admite `instituto`, `limite` (1–100, inicialmente 50) y `desplazamiento` (inicialmente 0). Sin coincidencias devuelve `[]`.
+- `GET /planificacion?anio=2026&nombre_profesional=maria`: filtra resumen, detalle y SIC por las personas coincidentes. Puede combinarse con los filtros anteriores. Cada fila del detalle incluye `nombre_profesional`.
+- Para el frontend: buscar al escribir mediante `/profesionales`, mostrar nombre e instituto para distinguir homónimos y, al seleccionar, consultar `/planificacion?anio=2026&profesional_id=P-NOMBRE-001`. No seleccionar automáticamente a la primera persona si hay varias coincidencias.
+
+Se muestra y busca el último nombre no vacío informado en las vigencias del año, también para meses históricos. Un contrato posterior sin nombre no borra el conocido. Los homónimos mantienen IDs distintos. Los registros antiguos sin nombre siguen accesibles por ID y se muestran con `nombre_profesional: null`; no se inventan nombres ni se buscan en SIC. Para añadir nombres a contratos existentes, envía un nuevo cambio BUK con contrato completo y vigencia posterior, no modifiques ni reenvíes con cambios un lote ya procesado.
+
+Este repositorio solo contiene el backend; la incorporación visual al frontend queda pendiente de disponer de ese proyecto.
+
 Se conservan todas las rutas anteriores. `asignacion_id` es estable por contrato de origen; un profesional puede tener varios. Una carga BUK contiene altas/cambios con **contrato completo**, no parches, o bajas sin contrato. Para contratos anteriores al año, envía vigencia desde el 1 de enero. El inicio debe estar en el año de carga; el término se limita al 31 de diciembre. Una baja rige desde su fecha, por lo que cierra el contrato el día anterior.
 
 Cada lote es atómico. La conexión mantiene transacciones y bloqueo PostgreSQL entre escritores; cualquier error revierte también el registro del lote. Los cambios con fecha anterior o igual al último aplicado se rechazan con 409: para reintentar, reutiliza el lote original. Se reconocen también huellas de lotes de la versión anterior. Los reintentos por errores de red se hacen reenviando **el mismo cuerpo y `carga_id`** hasta obtener `procesada` o `ya_procesada`; no se reejecutan escrituras parcialmente dentro de una transacción fallida. Los totales SIC no se desglosan por área/cargo: si se usan esos filtros, `sic` es `null` para evitar comparativos incorrectos.
@@ -74,3 +86,5 @@ Las pruebas de integración crean un esquema de nombre único **dentro de una tr
 Cobertura: límites 21,99/22/39,99/40; cambio a mitad de mes; promedio con altas/bajas y vacaciones; reducción de mayo sin doble descuento; feriados regionales; catálogo, redistribución y límite de asignaciones; grupos y precedencia; calendario; Meta, FOJA y redondeo. El reenvío BUK se prueba por HTTP con almacén simulado, incluyendo huellas antiguas y conflicto de contenido. PostgreSQL añade carga real/reenvío, alta/cambio/baja, rollback de lote, filtros y SIC.
 
 Resultado de esta ejecución: **25 pruebas aprobadas y 2 omitidas**. Se verificaron también los JSON completos de ejemplo y la generación de OpenAPI. No estaba configurada `DATABASE_URL` en el `.env` disponible y Docker no estaba iniciado. Las dos pruebas PostgreSQL y la comparación con la planilla oficial quedan pendientes.
+
+Verificación posterior de búsqueda por nombre: **31 pruebas aprobadas y 2 de PostgreSQL omitidas** (integración no activada). Incluye nombres parciales, tildes, homónimos, nombres ausentes/actualizados, paginación, filtros consistentes de planificación/SIC y compatibilidad de reenvíos anteriores. Las búsquedas HTTP ejecutadas usan almacenamiento simulado.
