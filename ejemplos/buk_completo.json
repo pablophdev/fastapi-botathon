@@ -1,0 +1,40 @@
+{
+  "carga_id": "buk-completo-ficticio-001",
+  "anio": 2026,
+  "cambios": [
+    {
+      "asignacion_id": "ASG-DEMO-002",
+      "vigente_desde": "2026-01-01",
+      "operacion": "alta_o_cambio",
+      "contrato": {
+        "profesional_id": "P-DEMO-002",
+        "instituto": "Santiago",
+        "region": "Metropolitana",
+        "zona": "Centro",
+        "area": "Rehabilitación",
+        "cargo": "Kinesiología",
+        "horas_semanales": 44,
+        "reduccion_mayo_pendiente": true,
+        "asignaciones_especiales": ["COORDINACION", "DOCENCIA"],
+        "vacaciones": [{"desde": "2026-02-09", "hasta": "2026-02-20"}]
+      }
+    },
+    {
+      "asignacion_id": "ASG-DEMO-002",
+      "vigente_desde": "2026-07-16",
+      "operacion": "alta_o_cambio",
+      "contrato": {
+        "profesional_id": "P-DEMO-002",
+        "instituto": "Santiago",
+        "region": "Metropolitana",
+        "zona": "Centro",
+        "area": "Rehabilitación",
+        "cargo": "Kinesiología",
+        "horas_semanales": 30,
+        "asignaciones_especiales": ["DOCENCIA"],
+        "fecha_fin": "2026-11-30"
+      }
+    },
+    {"asignacion_id": "ASG-DEMO-002", "vigente_desde": "2026-12-01", "operacion": "baja"}
+  ]
+}

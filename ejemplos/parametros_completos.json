@@ -1,0 +1,24 @@
+{
+  "meta_pct": 90,
+  "redondeo": "truncar",
+  "dias_semana": [0, 1, 2, 3, 4],
+  "fecha_reduccion_44_42": "2026-05-01",
+  "cargos": [
+    {"cargo": "Kinesiología", "tramo": "menos_22", "porcentaje_directa": 70, "porcentaje_indirecta": 20, "porcentaje_nas": 10, "minutos_directa": 30, "minutos_indirecta": 30},
+    {"cargo": "Kinesiología", "tramo": "22_a_menos_40", "porcentaje_directa": 60, "porcentaje_indirecta": 30, "porcentaje_nas": 10, "minutos_directa": 30, "minutos_indirecta": 30},
+    {"cargo": "Kinesiología", "tramo": "40_o_mas", "porcentaje_directa": 60, "porcentaje_indirecta": 25, "porcentaje_nas": 15, "minutos_directa": 30, "minutos_indirecta": 30}
+  ],
+  "dias_no_laborales": [
+    {"fecha": "2026-01-01"},
+    {"fecha": "2026-07-16"},
+    {"fecha": "2026-06-07", "region": "Arica y Parinacota"}
+  ],
+  "asignaciones_especiales": [
+    {"codigo": "COORDINACION", "horas_semanales": 4},
+    {"codigo": "DOCENCIA", "horas_semanales": 2}
+  ],
+  "atencion_grupal": [
+    {"area": "Rehabilitación", "zona": "Centro", "porcentaje_grupal": 20, "pacientes_por_grupo": 3},
+    {"area": "Rehabilitación", "instituto": "Santiago", "porcentaje_grupal": 25, "pacientes_por_grupo": 4}
+  ]
+}

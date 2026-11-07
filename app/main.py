@@ -1,17 +1,18 @@
 from datetime import date, timedelta
 from hashlib import sha256
+import json
 
 from fastapi import FastAPI, HTTPException
 from psycopg import OperationalError
 from psycopg.errors import InsufficientPrivilege, UndefinedTable
 from psycopg.types.json import Jsonb
 
-from .calculo import planificar, resumir
+from .calculo import planificar, promedios_anuales, resumir, tramo_jornada, validar_vigencias
 from .db import conexion, verificar_base
 from .modelos import Anio, CargaBUK, CargaSIC, Clave, Mes, Parametros
 
 
-app = FastAPI(title="Cada hora cuenta", version="0.2.0")
+app = FastAPI(title="Cada hora cuenta", version="0.3.0")
 
 
 def cargar_parametros(db, anio):
@@ -22,12 +23,23 @@ def cargar_parametros(db, anio):
 
 
 def registrar_carga(db, fuente, carga):
-    huella = sha256(carga.model_dump_json().encode()).hexdigest()
+    datos = carga.model_dump(mode="json")
+    huella = sha256(json.dumps(datos, sort_keys=True, ensure_ascii=False, separators=(",", ":")).encode()).hexdigest()
     previa = db.execute(
         "SELECT huella FROM cargas WHERE fuente = %s AND id = %s", (fuente, carga.carga_id)
     ).fetchone()
     if previa is not None:
-        if previa["huella"] != huella:
+        # Reconoce reenvíos de lotes procesados antes de ampliar Contrato.
+        legado = carga.model_dump(mode="json")
+        compatible = True
+        for cambio in legado.get("cambios", []):
+            contrato = cambio.get("contrato")
+            if contrato:
+                for campo in ("region", "zona", "vacaciones", "asignaciones_especiales", "reduccion_mayo_pendiente"):
+                    valor = contrato.pop(campo)
+                    compatible = compatible and not valor
+        huella_legada = sha256(json.dumps(legado, ensure_ascii=False, separators=(",", ":")).encode()).hexdigest()
+        if previa["huella"] != huella and not (compatible and previa["huella"] == huella_legada):
             raise HTTPException(409, "La carga_id ya existe con otros datos.")
         return False
     db.execute("INSERT INTO cargas (fuente, id, huella) VALUES (%s, %s, %s)", (fuente, carga.carga_id, huella))
@@ -48,6 +60,11 @@ def verificar_cargos(db, anio, parametros):
     if usados - cargos:
         faltan = ", ".join(sorted(usados - cargos))
         raise HTTPException(422, f"Faltan reglas de cálculo para: {faltan}.")
+    vigencias = db.execute("SELECT desde, hasta, datos FROM vigencias WHERE anio = %s", (anio,)).fetchall()
+    try:
+        validar_vigencias(vigencias, parametros)
+    except ValueError as error:
+        raise HTTPException(422, str(error)) from error
 
 
 @app.get("/salud")
@@ -102,8 +119,8 @@ def aplicar_cambio(db, anio, cambio):
     ultima_fecha = db.execute(
         "SELECT desde FROM ultimo_cambio WHERE anio = %s AND asignacion = %s", clave
     ).fetchone()
-    if ultima_fecha and inicio < ultima_fecha["desde"]:
-        raise HTTPException(409, f"El cambio de {cambio.asignacion_id} es anterior a su último cambio aplicado.")
+    if ultima_fecha and inicio <= ultima_fecha["desde"]:
+        raise HTTPException(409, f"El cambio de {cambio.asignacion_id} no es posterior a su último cambio aplicado; reenvíe el lote original para reintentar.")
     db.execute(
         """INSERT INTO ultimo_cambio VALUES (%s, %s, %s)
            ON CONFLICT(anio, asignacion) DO UPDATE SET desde = excluded.desde""",
@@ -179,13 +196,17 @@ def consultar_planificacion(
         ).fetchall()
 
     filtros = (profesional_id, instituto, mes, area, cargo)
+    promedios = promedios_anuales(vigencias, parametros)
     valores_filtrados = {
         clave: valores for clave, valores in planificar(vigencias, parametros).items()
         if all(filtro is None or filtro == dato for filtro, dato in zip(filtros, clave))
     }
     detalle = [
         {"profesional_id": persona, "instituto": centro, "mes": periodo, "area": unidad,
-         "cargo": rol, **resumir([valores], parametros.meta_pct)}
+         "cargo": rol,
+         "jornada_promedio_anual": round(float(promedios[(persona, centro)]), 4),
+         "tramo_jornada": tramo_jornada(promedios[(persona, centro)]),
+         **resumir([valores], parametros.meta_pct, parametros.redondeo)}
         for (persona, centro, periodo, unidad, rol), valores in sorted(valores_filtrados.items())
     ]
     sic = None
@@ -198,7 +219,7 @@ def consultar_planificacion(
 
     return {
         "anio": anio,
-        "resumen": resumir(valores_filtrados.values(), parametros.meta_pct),
+        "resumen": resumir(valores_filtrados.values(), parametros.meta_pct, parametros.redondeo),
         "detalle": detalle,
         "sic": sic,
     }
